@@ -21,11 +21,19 @@
 
 ### Компоненты безопасности
 
-#### CustomAuthorizationManager
-- Извлекает переменные пути (declarationId, wareId) из URI
-- Проверяет права доступа на основе ролей и authorities
-- Выполняет проверку владения ресурсами
-- Логирует все операции авторизации
+#### AnnotationBasedAuthorizationManager
+- Сканирует контроллеры модулей при старте приложения
+- Читает аннотации безопасности из методов контроллеров
+- Создает маппинг эндпоинт → требуемые authorities
+- Проверяет права доступа на основе аннотаций из контроллеров
+
+#### ControllerScanner
+- Автоматически сканирует контроллеры из moduleA и moduleB
+- Инициализирует AnnotationBasedAuthorizationManager при старте
+
+#### AuthenticationConverter
+- Извлекает userId из заголовка X-User-Id
+- Создает Authentication объект с authorities пользователя
 
 #### Кастомные аннотации (commons модуль)
 - `@RequireReadDeclaration` - проверка права чтения деклараций
@@ -56,22 +64,18 @@ security2/
 │   └── src/main/java/com/example/gateway/
 │       ├── GatewayApplication.java
 │       ├── config/
-│       │   └── SecurityConfig.java          # Централизованная конфигурация безопасности
+│       │   ├── SecurityConfig.java          # Централизованная конфигурация безопасности
+│       │   └── ControllerScanner.java       # Сканер контроллеров для авторизации
 │       └── security/
-│           ├── CustomAuthorizationManager.java
-│           ├── AuthenticatedUser.java
-│           ├── UserPermissionService.java
-│           ├── ResourceOwnershipService.java
-│           ├── JwtAuthenticationConverter.java
-│           └── UserService.java
+│           ├── AnnotationBasedAuthorizationManager.java  # Авторизация на основе аннотаций
+│           ├── AuthenticationConverter.java             # Конвертер аутентификации
+│           └── UserAuthentication.java                  # Реализация Authentication
 ├── moduleA/                   # Бизнес-модуль A
 │   ├── pom.xml
 │   └── src/main/java/com/example/moduleA/
 │       ├── ModuleAApplication.java
-│       ├── config/
-│       │   └── SecurityConfig.java          # Минимальная конфигурация для @PreAuthorize
 │       ├── controller/
-│       │   └── DeclarationController.java
+│       │   └── DeclarationController.java  # Использует аннотации @RequireReadDeclaration, @RequireWriteDeclaration
 │       ├── service/
 │       │   └── DeclarationService.java
 │       └── dto/
@@ -80,10 +84,8 @@ security2/
     ├── pom.xml
     └── src/main/java/com/example/moduleB/
         ├── ModuleBApplication.java
-        ├── config/
-        │   └── SecurityConfig.java          # Минимальная конфигурация для @PreAuthorize
         ├── controller/
-        │   └── WareController.java
+        │   └── WareController.java         # Использует аннотации @RequireReadWare, @RequireWriteWare
         ├── service/
         │   └── WareService.java
         └── dto/
@@ -158,7 +160,6 @@ mvn spring-boot:run
 
 ```bash
 curl -X GET http://localhost:8082/api/moduleA/declarations \
-  -H "Authorization: Bearer token" \
   -H "X-User-Id: user1"
 ```
 
@@ -166,7 +167,6 @@ curl -X GET http://localhost:8082/api/moduleA/declarations \
 
 ```bash
 curl -X POST http://localhost:8082/api/moduleA/declarations \
-  -H "Authorization: Bearer token" \
   -H "X-User-Id: user1" \
   -H "Content-Type: application/json" \
   -d '{
@@ -181,7 +181,6 @@ curl -X POST http://localhost:8082/api/moduleA/declarations \
 
 ```bash
 curl -X GET http://localhost:8082/api/moduleB/wares \
-  -H "Authorization: Bearer token" \
   -H "X-User-Id: user1"
 ```
 
@@ -195,11 +194,12 @@ curl -X GET http://localhost:8082/api/moduleB/wares \
 ### SOLID
 
 - **Single Responsibility Principle**: Каждый класс имеет одну ответственность
-  - `CustomAuthorizationManager` - только авторизация
-  - `UserPermissionService` - только проверка прав
-  - `ResourceOwnershipService` - только проверка владения
+  - `AnnotationBasedAuthorizationManager` - только авторизация на основе аннотаций
+  - `AuthenticationConverter` - только конвертация запроса в Authentication
+  - `ControllerScanner` - только сканирование контроллеров
+  - `UserService` - только управление пользователями
 
-- **Open/Closed Principle**: Легко расширять новыми правилами авторизации без изменения существующего кода
+- **Open/Closed Principle**: Легко расширять новыми правилами авторизации через аннотации без изменения существующего кода
 
 - **Liskov Substitution Principle**: Использование интерфейсов Spring Security
 
@@ -213,14 +213,15 @@ curl -X GET http://localhost:8082/api/moduleB/wares \
 
 1. Создайте новый модуль в корне проекта
 2. Добавьте модуль в родительский `pom.xml`
-3. Добавьте правила авторизации в `UserPermissionService`
-4. Добавьте правила в `SecurityConfig` в gateway модуле
+3. Создайте контроллеры с аннотациями безопасности
+4. `ControllerScanner` автоматически найдет контроллеры при старте
 
 ### Добавление новых прав доступа
 
-1. Добавьте новое authority в `UserService`
-2. Добавьте проверку в `UserPermissionService`
-3. Используйте новое authority в `@PreAuthorize` аннотациях
+1. Добавьте новое authority в `UserService` (commons модуль)
+2. Создайте новую аннотацию в `commons/security/annotation/`
+3. Добавьте маппинг аннотация → authorities в `AnnotationBasedAuthorizationManager`
+4. Используйте новую аннотацию в контроллерах
 
 ## Примечания
 
