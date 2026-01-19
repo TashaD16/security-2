@@ -1,0 +1,10 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: moduleA
+
+logging:
+  level:
+    com.example.moduleA: DEBUG
