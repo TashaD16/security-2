@@ -1,48 +1,10 @@
-# Многомодульное Spring Boot приложение с централизованной безопасностью
+# Библиотека для авторизации на основе аннотаций
 
 ## Описание
 
-Это многомодульное Spring Boot приложение с централизованной логикой авторизации в модуле **gateway**. Приложение состоит из четырех модулей:
+Это библиотека для интеграции в другой модульный проект. Предоставляет механизм авторизации на основе аннотаций из контроллеров.
 
-- **commons** - общий модуль с кастомными аннотациями безопасности
-- **gateway** (порт 8082) - централизованный модуль безопасности
-- **moduleA** (порт 8080) - бизнес-модуль для работы с декларациями
-- **moduleB** (порт 8081) - бизнес-модуль для работы с товарами
-
-## Архитектура безопасности
-
-### Принципы
-
-1. **Единая точка входа**: Gateway обрабатывает все запросы и применяет правила безопасности
-2. **Централизованная конфигурация**: Все правила авторизации определены в `gateway/src/main/java/com/example/gateway/config/SecurityConfig.java`
-3. **Упрощенная архитектура**: Бизнес-модули не содержат сложной конфигурации безопасности и сосредоточены на бизнес-логике
-4. **Легкое обслуживание**: Изменения в правилах безопасности требуют изменений только в gateway модуле
-5. **Кастомные аннотации**: Использование переиспользуемых мета-аннотаций из модуля commons для проверки прав доступа
-
-### Компоненты безопасности
-
-#### AnnotationBasedAuthorizationManager
-- Сканирует контроллеры модулей при старте приложения
-- Читает аннотации безопасности из методов контроллеров
-- Создает маппинг эндпоинт → требуемые authorities
-- Проверяет права доступа на основе аннотаций из контроллеров
-
-#### ControllerScanner
-- Автоматически сканирует контроллеры из moduleA и moduleB
-- Инициализирует AnnotationBasedAuthorizationManager при старте
-
-#### AuthenticationConverter
-- Извлекает userId из заголовка X-User-Id
-- Создает Authentication объект с authorities пользователя
-
-#### Кастомные аннотации (commons модуль)
-- `@RequireReadDeclaration` - проверка права чтения деклараций
-- `@RequireWriteDeclaration` - проверка права записи деклараций
-- `@RequireApproveDeclaration` - проверка права утверждения деклараций
-- `@RequireReadWare` - проверка права чтения товаров
-- `@RequireWriteWare` - проверка права записи товаров
-- `@RequireManageInventory` - проверка права управления инвентарем
-- Все аннотации централизованы в модуле commons для переиспользования
+**ВАЖНО:** Этот проект предназначен для интеграции в другой проект, где уже настроена авторизация. Используйте `AnnotationBasedAuthorizationChecker` в вашей существующей SecurityConfig.
 
 ## Структура проекта
 
@@ -52,180 +14,216 @@ security2/
 ├── commons/                   # Общий модуль
 │   ├── pom.xml
 │   └── src/main/java/com/example/commons/
-│       └── security/annotation/
-│           ├── RequireReadDeclaration.java
-│           ├── RequireWriteDeclaration.java
-│           ├── RequireApproveDeclaration.java
-│           ├── RequireReadWare.java
-│           ├── RequireWriteWare.java
-│           └── RequireManageInventory.java
-├── gateway/                   # Модуль Gateway
-│   ├── pom.xml
-│   └── src/main/java/com/example/gateway/
-│       ├── GatewayApplication.java
-│       ├── config/
-│       │   ├── SecurityConfig.java          # Централизованная конфигурация безопасности
-│       │   └── ControllerScanner.java       # Сканер контроллеров для авторизации
 │       └── security/
-│           ├── AnnotationBasedAuthorizationManager.java  # Авторизация на основе аннотаций
-│           ├── AuthenticationConverter.java             # Конвертер аутентификации
-│           └── UserAuthentication.java                  # Реализация Authentication
-├── moduleA/                   # Бизнес-модуль A
-│   ├── pom.xml
-│   └── src/main/java/com/example/moduleA/
-│       ├── ModuleAApplication.java
-│       ├── controller/
-│       │   └── DeclarationController.java  # Использует аннотации @RequireReadDeclaration, @RequireWriteDeclaration
-│       ├── service/
-│       │   └── DeclarationService.java
-│       └── dto/
-│           └── DeclarationDto.java
-└── moduleB/                   # Бизнес-модуль B
+│           ├── annotation/    # Кастомные аннотации безопасности
+│           │   ├── RequireReadDeclaration.java
+│           │   ├── RequireWriteDeclaration.java
+│           │   ├── RequireApproveDeclaration.java
+│           │   ├── RequireReadWare.java
+│           │   ├── RequireWriteWare.java
+│           │   └── RequireManageInventory.java
+│           └── service/
+│               └── UserService.java  # Сервис для управления пользователями
+└── gateway/                   # Модуль с логикой авторизации
     ├── pom.xml
-    └── src/main/java/com/example/moduleB/
-        ├── ModuleBApplication.java
-        ├── controller/
-        │   └── WareController.java         # Использует аннотации @RequireReadWare, @RequireWriteWare
-        ├── service/
-        │   └── WareService.java
-        └── dto/
-            └── WareDto.java
+    └── src/main/java/com/example/gateway/
+        ├── config/
+        │   ├── ControllerScanner.java              # Сканер контроллеров
+        │   ├── EndpointAuthorizationRegistry.java  # Реестр правил авторизации
+        │   └── AutoRescanService.java              # Автоматическое пересканирование
+        └── security/
+            ├── AnnotationBasedAuthorizationChecker.java  # Компонент для интеграции
+            └── CustomAuthorizationManager.java            # Методы проверки авторизации
 ```
 
-## Тестовые пользователи
+## Основные компоненты
 
-Приложение содержит следующие тестовые пользователи:
+### 1. ControllerScanner
+- Сканирует контроллеры из указанных пакетов при старте приложения
+- Находит аннотации безопасности на методах контроллеров
+- Создает маппинг эндпоинт → метод CustomAuthorizationManager
 
-| User ID | Username | Roles | Authorities |
-|---------|----------|-------|-------------|
-| user1 | admin | ADMIN, USER | READ_DECLARATION, WRITE_DECLARATION, APPROVE_DECLARATION, READ_WARE, WRITE_WARE, MANAGE_INVENTORY, ADMIN |
-| user2 | operator | USER | READ_DECLARATION, READ_WARE |
-| user3 | moduleA_user | USER | READ_DECLARATION, WRITE_DECLARATION |
-| user4 | moduleB_user | USER | READ_WARE, WRITE_WARE, MANAGE_INVENTORY |
+### 2. EndpointAuthorizationRegistry
+- Хранит маппинг путь+метод → метод авторизации
+- Поддерживает path variables через паттерны
 
-## Права доступа
+### 3. CustomAuthorizationManager
+- Содержит методы для проверки различных типов доступа
+- `checkReadDeclaration()`, `checkWriteDeclaration()`, `checkApproveDeclaration()`
+- `checkReadWare()`, `checkWriteWare()`, `checkManageInventory()`
 
-### Module A (Декларации)
+### 4. AnnotationBasedAuthorizationChecker
+- **Главный компонент для интеграции**
+- Используйте в вашей SecurityConfig: `.access(authorizationChecker::checkAuthorization)`
+- Полный цикл проверки: путь → реестр → CustomAuthorizationManager → решение
 
-- **GET /api/moduleA/declarations** - требует `READ_DECLARATION` или `ADMIN` (аннотация `@RequireReadDeclaration`)
-- **GET /api/moduleA/declarations/{id}** - требует `READ_DECLARATION` или `ADMIN` (аннотация `@RequireReadDeclaration`)
-- **POST /api/moduleA/declarations** - требует `WRITE_DECLARATION` или `ADMIN` (аннотация `@RequireWriteDeclaration`)
-- **PUT /api/moduleA/declarations/{id}** - требует `WRITE_DECLARATION` или `ADMIN` (аннотация `@RequireWriteDeclaration`)
-- **DELETE /api/moduleA/declarations/{id}** - требует `WRITE_DECLARATION` или `ADMIN` (аннотация `@RequireWriteDeclaration`)
+### 5. AutoRescanService (опционально)
+- Автоматически пересканирует контроллеры при изменениях
+- Работает в фоновом режиме с настраиваемым интервалом
 
-### Module B (Товары)
+### 6. Кастомные аннотации (commons модуль)
+- `@RequireReadDeclaration` - проверка права чтения деклараций
+- `@RequireWriteDeclaration` - проверка права записи деклараций
+- `@RequireApproveDeclaration` - проверка права утверждения деклараций
+- `@RequireReadWare` - проверка права чтения товаров
+- `@RequireWriteWare` - проверка права записи товаров
+- `@RequireManageInventory` - проверка права управления инвентарем
 
-- **GET /api/moduleB/wares** - требует `READ_WARE` или `ADMIN` (аннотация `@RequireReadWare`)
-- **GET /api/moduleB/wares/{id}** - требует `READ_WARE` или `ADMIN` (аннотация `@RequireReadWare`)
-- **POST /api/moduleB/wares** - требует `WRITE_WARE` или `ADMIN` (аннотация `@RequireWriteWare`)
-- **PUT /api/moduleB/wares/{id}** - требует `WRITE_WARE` или `ADMIN` (аннотация `@RequireWriteWare`)
-- **DELETE /api/moduleB/wares/{id}** - требует `WRITE_WARE` или `ADMIN` (аннотация `@RequireWriteWare`)
+## Быстрый старт
 
-## Сборка и запуск
+### 1. Добавьте зависимость
 
-### Требования
+В `pom.xml` вашего проекта:
 
-- Java 17+
-- Maven 3.6+
+```xml
+<dependency>
+    <groupId>com.example</groupId>
+    <artifactId>gateway</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
 
-### Сборка проекта
+### 2. Настройте пакеты для сканирования
+
+В `application.properties` вашего проекта:
+
+```properties
+# Пакеты для сканирования контроллеров (разделенные запятой)
+endpoint-scanner.scan-packages=com.yourproject.module1.controller,com.yourproject.module2.controller
+```
+
+### 3. Интегрируйте в вашу SecurityConfig
+
+```java
+@Configuration
+@EnableWebFluxSecurity
+@RequiredArgsConstructor
+public class YourSecurityConfig {
+    
+    private final AnnotationBasedAuthorizationChecker authorizationChecker;
+    
+    @Bean
+    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
+        http
+            // Ваша существующая конфигурация аутентификации...
+            .authorizeExchange(exchanges -> exchanges
+                // Используйте AnnotationBasedAuthorizationChecker для проверки авторизации
+                .pathMatchers("/api/**")
+                    .access(authorizationChecker::checkAuthorization)
+                
+                // Остальные ваши правила...
+                .anyExchange().authenticated()
+            );
+        
+        return http.build();
+    }
+}
+```
+
+### 4. Используйте аннотации в контроллерах
+
+```java
+@RestController
+@RequestMapping("/api/your-module/resource")
+public class YourController {
+
+    @GetMapping
+    @RequireReadDeclaration  // Автоматически проверяется через CustomAuthorizationManager
+    public ResponseEntity<List<Resource>> getAll() {
+        // ...
+    }
+
+    @PostMapping
+    @RequireWriteDeclaration  // Автоматически проверяется через CustomAuthorizationManager
+    public ResponseEntity<Resource> create(@RequestBody Resource resource) {
+        // ...
+    }
+}
+```
+
+## Как это работает
+
+### Полный цикл проверки (все в этом проекте):
+
+```
+1. ЗАПРОС ПРИХОДИТ:
+   GET /api/your-module/resource
+   Header: X-User-Id: user1
+
+2. ВАША SECURITYCONFIG:
+   → Проверяет аутентификацию (ваша логика)
+   → Вызывает authorizationChecker.checkAuthorization()
+
+3. ANNOTATIONBASEDAUTHORIZATIONCHECKER:
+   → Определяет путь и метод: "GET:/api/your-module/resource"
+   → Ищет в EndpointAuthorizationRegistry
+
+4. ENDPOINTAUTHORIZATIONREGISTRY:
+   → Находит: "GET:/api/your-module/resource" → checkReadDeclaration()
+
+5. CUSTOMAUTHORIZATIONMANAGER:
+   → Вызывает checkReadDeclaration()
+   → Проверяет authorities: [READ_DECLARATION, ADMIN]
+   → Возвращает AuthorizationDecision
+
+6. РЕЗУЛЬТАТ:
+   ✅ Разрешить доступ / ❌ Запретить доступ
+```
+
+## Автоматическое пересканирование
+
+При обновлении модулей контроллеры автоматически пересканируются (если включено):
+
+```properties
+gateway.auto-rescan.enabled=true
+gateway.auto-rescan.polling-interval=30000
+gateway.auto-rescan.initial-delay=30000
+```
+
+## Кастомизация
+
+### Добавление новых типов доступа:
+
+1. Создайте новую аннотацию в `commons` модуле:
+```java
+@Target({ElementType.METHOD, ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+public @interface RequireCustomAccess {
+}
+```
+
+2. Добавьте метод в `CustomAuthorizationManager`:
+```java
+public Mono<AuthorizationDecision> checkCustomAccess(
+        Mono<Authentication> authenticationMono,
+        AuthorizationContext context) {
+    return checkAuthorities(authenticationMono, Set.of("CUSTOM_ACCESS", "ADMIN"), 
+            "custom access");
+}
+```
+
+3. Добавьте маппинг в `ControllerScanner.findAuthorizationMethod()`:
+```java
+if (AnnotationUtils.findAnnotation(method, RequireCustomAccess.class) != null) {
+    return authorizationManager::checkCustomAccess;
+}
+```
+
+## Сборка проекта
 
 ```bash
 mvn clean install
 ```
 
-### Запуск модулей
+## Документация
 
-Запустите каждый модуль отдельно:
-
-```bash
-# Terminal 1 - Gateway
-cd gateway
-mvn spring-boot:run
-
-# Terminal 2 - Module A
-cd moduleA
-mvn spring-boot:run
-
-# Terminal 3 - Module B
-cd moduleB
-mvn spring-boot:run
-```
-
-## Тестирование API
-
-### Примеры запросов
-
-#### Получение всех деклараций (требует аутентификации)
-
-```bash
-curl -X GET http://localhost:8082/api/moduleA/declarations \
-  -H "X-User-Id: user1"
-```
-
-#### Создание декларации
-
-```bash
-curl -X POST http://localhost:8082/api/moduleA/declarations \
-  -H "X-User-Id: user1" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "number": "DEC-003",
-    "type": "IMPORT",
-    "date": "2024-01-15T10:00:00",
-    "description": "New declaration"
-  }'
-```
-
-#### Получение всех товаров
-
-```bash
-curl -X GET http://localhost:8082/api/moduleB/wares \
-  -H "X-User-Id: user1"
-```
+- **[INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)** - Интеграция как библиотека (через Maven dependency)
+- **[INTEGRATION_WITHOUT_LIBRARY.md](INTEGRATION_WITHOUT_LIBRARY.md)** - Интеграция без библиотеки (копирование модулей/классов)
+- **[FILES_TO_COPY.md](FILES_TO_COPY.md)** - Список файлов для копирования
 
 ## Принципы проектирования
 
-### DRY (Don't Repeat Yourself)
-- Централизованная логика безопасности в gateway модуле
-- Переиспользование компонентов безопасности
-- Единая точка конфигурации
-
-### SOLID
-
-- **Single Responsibility Principle**: Каждый класс имеет одну ответственность
-  - `AnnotationBasedAuthorizationManager` - только авторизация на основе аннотаций
-  - `AuthenticationConverter` - только конвертация запроса в Authentication
-  - `ControllerScanner` - только сканирование контроллеров
-  - `UserService` - только управление пользователями
-
-- **Open/Closed Principle**: Легко расширять новыми правилами авторизации через аннотации без изменения существующего кода
-
-- **Liskov Substitution Principle**: Использование интерфейсов Spring Security
-
-- **Interface Segregation Principle**: Разделение ответственности между сервисами
-
-- **Dependency Inversion Principle**: Зависимость от абстракций (интерфейсов Spring Security)
-
-## Расширение функциональности
-
-### Добавление нового модуля
-
-1. Создайте новый модуль в корне проекта
-2. Добавьте модуль в родительский `pom.xml`
-3. Создайте контроллеры с аннотациями безопасности
-4. `ControllerScanner` автоматически найдет контроллеры при старте
-
-### Добавление новых прав доступа
-
-1. Добавьте новое authority в `UserService` (commons модуль)
-2. Создайте новую аннотацию в `commons/security/annotation/`
-3. Добавьте маппинг аннотация → authorities в `AnnotationBasedAuthorizationManager`
-4. Используйте новую аннотацию в контроллерах
-
-## Примечания
-
-- В демонстрационных целях используется упрощенная аутентификация через заголовок `X-User-Id`
-- В production окружении необходимо реализовать полноценную JWT аутентификацию
-- Хранение пользователей и ресурсов реализовано в памяти для демонстрации
-- В production окружении необходимо использовать базу данных
+- **DRY** - централизованная логика авторизации
+- **SOLID** - каждый компонент имеет одну ответственность
+- **Расширяемость** - легко добавлять новые типы доступа через аннотации
+- **Интегрируемость** - работает с существующей SecurityConfig другого проекта

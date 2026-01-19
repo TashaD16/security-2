@@ -1,17 +1,15 @@
 package com.example.commons.security.annotation;
 
-import org.springframework.security.access.prepost.PreAuthorize;
-
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Кастомная аннотация для проверки права записи деклараций
+ * Кастомная аннотация для проверки права записи деклараций.
+ * Используется как маркер для сканирования контроллеров в gateway.
  */
 @Target({ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
-@PreAuthorize("hasAuthority('WRITE_DECLARATION') or hasAuthority('ADMIN')")
 public @interface RequireWriteDeclaration {
 }
