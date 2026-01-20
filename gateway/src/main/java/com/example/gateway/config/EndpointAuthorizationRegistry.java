@@ -1,11 +1,12 @@
 package com.example.gateway.config;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.server.authorization.AuthorizationContext;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.regex.Pattern;
@@ -14,6 +15,7 @@ import java.util.regex.Pattern;
  * Реестр правил авторизации для эндпоинтов.
  * Хранит маппинг путь+метод -> метод CustomAuthorizationManager.
  */
+@Slf4j
 @Component
 public class EndpointAuthorizationRegistry {
 
@@ -40,6 +42,32 @@ public class EndpointAuthorizationRegistry {
      */
     public int size() {
         return rules.size();
+    }
+
+    /**
+     * Возвращает все зарегистрированные эндпоинты
+     */
+    public Set<String> getAllEndpoints() {
+        return new HashSet<>(rules.keySet());
+    }
+
+    /**
+     * Выводит в консоль все зарегистрированные эндпоинты
+     */
+    public void printAllEndpoints() {
+        if (rules.isEmpty()) {
+            log.info("=== EndpointAuthorizationRegistry: No endpoints registered ===");
+            return;
+        }
+
+        log.info("=== EndpointAuthorizationRegistry: {} registered endpoints ===", rules.size());
+        List<String> sortedEndpoints = new ArrayList<>(rules.keySet());
+        Collections.sort(sortedEndpoints);
+        
+        for (String endpoint : sortedEndpoints) {
+            log.info("  - {}", endpoint);
+        }
+        log.info("=== End of registered endpoints ===");
     }
 
     /**

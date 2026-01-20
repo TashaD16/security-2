@@ -53,6 +53,8 @@ public class ControllerScanner implements CommandLineRunner {
             endpointRegistry.clear();
             initializeAuthorizationRules(controllers);
             log.info("Rescan completed. Registered {} authorization rules", endpointRegistry.size());
+            // Выводим все зарегистрированные эндпоинты в консоль
+            endpointRegistry.printAllEndpoints();
         } else {
             log.warn("No controllers found. Make sure moduleA and moduleB are in classpath.");
         }
