@@ -22,6 +22,7 @@
     <modules>
         <module>commons</module>
         <module>gateway</module>
+        <module>gateway_lazy</module>
     </modules>
 
     <properties>

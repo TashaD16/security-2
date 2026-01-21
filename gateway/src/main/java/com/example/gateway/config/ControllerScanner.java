@@ -1,16 +1,23 @@
 package com.example.gateway.config;
 
-import com.example.commons.security.annotation.*;
+import com.example.gateway.config.ControllerScanningUtils;
 import com.example.gateway.security.CustomAuthorizationManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.core.annotation.AnnotationUtils;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.core.type.classreading.CachingMetadataReaderFactory;
+import org.springframework.core.type.classreading.MetadataReader;
+import org.springframework.core.type.classreading.MetadataReaderFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.web.server.authorization.AuthorizationContext;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
+import org.springframework.security.authorization.AuthorizationDecision;
 
 import java.lang.reflect.Method;
 import java.util.*;
@@ -81,7 +88,6 @@ public class ControllerScanner implements CommandLineRunner {
     /**
      * Автоматически находит все контроллеры во всех модулях в classpath.
      * Сканирует весь classpath без необходимости указывать конкретные пакеты.
-     * Использует ControllerFinder для упрощения логики
      * 
      * @return множество найденных контроллеров
      */
@@ -91,23 +97,39 @@ public class ControllerScanner implements CommandLineRunner {
         try {
             log.info("Scanning all controllers in classpath...");
             
-            List<ControllerFinder.ControllerInfo> found = ControllerFinder.findAllControllers();
+            PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
+            MetadataReaderFactory metadataReaderFactory = new CachingMetadataReaderFactory(resolver);
+            String pattern = "classpath*:**/*.class";
+            Resource[] resources = resolver.getResources(pattern);
             
-            for (ControllerFinder.ControllerInfo info : found) {
-                try {
-                    Class<?> clazz = Class.forName(info.className);
-                    controllers.add(clazz);
-                    log.info("✓ Registered controller: {}", info.className);
-                } catch (ClassNotFoundException | NoClassDefFoundError e) {
-                    log.warn("Could not load controller class: {}", info.className, e);
+            int checked = 0;
+            for (Resource resource : resources) {
+                if (resource.isReadable()) {
+                    try {
+                        MetadataReader metadataReader = metadataReaderFactory.getMetadataReader(resource);
+                        String className = metadataReader.getClassMetadata().getClassName();
+                        
+                        // Пропускаем системные классы
+                        if (isSystemClass(className)) {
+                            continue;
+                        }
+                        
+                        checked++;
+                        if (metadataReader.getAnnotationMetadata().hasAnnotation(RestController.class.getName())) {
+                            Class<?> clazz = Class.forName(className);
+                            controllers.add(clazz);
+                            log.info("✓ Found controller: {}", className);
+                        }
+                    } catch (ClassNotFoundException | NoClassDefFoundError e) {
+                        // Игнорируем
+                    }
                 }
             }
             
-            log.info("Total controllers found: {}", controllers.size());
+            log.info("Checked {} classes, found {} controllers", checked, controllers.size());
             
             if (controllers.isEmpty()) {
                 log.warn("No controllers found in classpath");
-                log.warn("Use ControllerFinder.findAllControllers() for detailed diagnostics");
             }
             
         } catch (Exception e) {
@@ -119,7 +141,6 @@ public class ControllerScanner implements CommandLineRunner {
 
     /**
      * Сканирует контроллеры из указанных пакетов (из конфигурации)
-     * Использует ControllerFinder для упрощения логики
      */
     public Set<Class<?>> scanControllers() {
         Set<Class<?>> controllers = new HashSet<>();
@@ -128,20 +149,37 @@ public class ControllerScanner implements CommandLineRunner {
             String[] packageArray = scanPackages.split(",");
             log.info("Scanning controllers in packages: {}", scanPackages);
             
+            PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
+            MetadataReaderFactory metadataReaderFactory = new CachingMetadataReaderFactory(resolver);
+            
             for (String packageName : packageArray) {
                 packageName = packageName.trim();
-                log.info("Scanning package: {}", packageName);
+                String packagePath = packageName.replace('.', '/');
+                String pattern = "classpath*:" + packagePath + "/**/*.class";
                 
-                List<ControllerFinder.ControllerInfo> found = ControllerFinder.findControllers(packageName);
+                log.debug("Scanning pattern: {}", pattern);
                 
-                for (ControllerFinder.ControllerInfo info : found) {
-                    try {
-                        Class<?> clazz = Class.forName(info.className);
-                        controllers.add(clazz);
-                        log.info("✓ Registered controller: {}", info.className);
-                    } catch (ClassNotFoundException e) {
-                        log.warn("Could not load controller class: {}", info.className, e);
+                try {
+                    Resource[] resources = resolver.getResources(pattern);
+                    
+                    for (Resource resource : resources) {
+                        if (resource.isReadable()) {
+                            try {
+                                MetadataReader metadataReader = metadataReaderFactory.getMetadataReader(resource);
+                                String className = metadataReader.getClassMetadata().getClassName();
+                                
+                                if (metadataReader.getAnnotationMetadata().hasAnnotation(RestController.class.getName())) {
+                                    Class<?> clazz = Class.forName(className);
+                                    controllers.add(clazz);
+                                    log.info("✓ Found controller: {}", className);
+                                }
+                            } catch (ClassNotFoundException e) {
+                                // Игнорируем
+                            }
+                        }
                     }
+                } catch (Exception e) {
+                    log.warn("Error scanning package {}: {}", packageName, e.getMessage());
                 }
             }
             
@@ -149,14 +187,24 @@ public class ControllerScanner implements CommandLineRunner {
             
             if (controllers.isEmpty()) {
                 log.warn("No controllers found in packages: {}", scanPackages);
-                log.warn("Use ControllerFinder.findControllers(\"{}\") for detailed diagnostics", 
-                        scanPackages.split(",")[0]);
             }
         } catch (Exception e) {
             log.error("Error scanning controllers", e);
         }
         
         return controllers;
+    }
+
+    /**
+     * Проверяет, является ли класс системным (не нужно сканировать)
+     */
+    private boolean isSystemClass(String className) {
+        return className.startsWith("org.springframework") ||
+               className.startsWith("org.apache") ||
+               className.startsWith("java.") ||
+               className.startsWith("javax.") ||
+               className.startsWith("jakarta.") ||
+               className.contains("$");
     }
 
     /**
@@ -177,22 +225,18 @@ public class ControllerScanner implements CommandLineRunner {
      * Сканирует контроллер и создает правила авторизации для всех методов
      */
     private int scanController(Class<?> controllerClass) {
-        RequestMapping classMapping = AnnotationUtils.findAnnotation(controllerClass, RequestMapping.class);
-        String basePath = classMapping != null && classMapping.value().length > 0 
-            ? classMapping.value()[0] 
-            : "";
-
+        String basePath = ControllerScanningUtils.findBasePath(controllerClass);
         int rulesCount = 0;
+        
         for (Method method : controllerClass.getDeclaredMethods()) {
-            String httpMethod = findHttpMethod(method);
+            String httpMethod = ControllerScanningUtils.findHttpMethod(method);
             if (httpMethod == null) continue;
 
-            String methodPath = findMethodPath(method);
+            String methodPath = ControllerScanningUtils.findMethodPath(method);
             String fullPath = basePath + methodPath;
 
-            // Ищем аннотацию безопасности и определяем метод CustomAuthorizationManager
-            BiFunction<Mono<Authentication>, org.springframework.security.web.server.authorization.AuthorizationContext, Mono<org.springframework.security.authorization.AuthorizationDecision>> authorizationMethod = 
-                findAuthorizationMethod(method);
+            BiFunction<Mono<Authentication>, AuthorizationContext, Mono<AuthorizationDecision>> authorizationMethod = 
+                ControllerScanningUtils.findAuthorizationMethod(method, this::getAuthorizationMethod);
             
             if (authorizationMethod != null) {
                 String key = httpMethod + ":" + fullPath;
@@ -206,64 +250,18 @@ public class ControllerScanner implements CommandLineRunner {
     }
 
     /**
-     * Находит HTTP метод из аннотаций
+     * Получает метод авторизации по типу аннотации
      */
-    private String findHttpMethod(Method method) {
-        if (AnnotationUtils.findAnnotation(method, GetMapping.class) != null) return "GET";
-        if (AnnotationUtils.findAnnotation(method, PostMapping.class) != null) return "POST";
-        if (AnnotationUtils.findAnnotation(method, PutMapping.class) != null) return "PUT";
-        if (AnnotationUtils.findAnnotation(method, DeleteMapping.class) != null) return "DELETE";
-        if (AnnotationUtils.findAnnotation(method, PatchMapping.class) != null) return "PATCH";
-        return null;
-    }
-
-    /**
-     * Находит путь метода
-     */
-    private String findMethodPath(Method method) {
-        GetMapping getMapping = AnnotationUtils.findAnnotation(method, GetMapping.class);
-        if (getMapping != null && getMapping.value().length > 0) return getMapping.value()[0];
-        
-        PostMapping postMapping = AnnotationUtils.findAnnotation(method, PostMapping.class);
-        if (postMapping != null && postMapping.value().length > 0) return postMapping.value()[0];
-        
-        PutMapping putMapping = AnnotationUtils.findAnnotation(method, PutMapping.class);
-        if (putMapping != null && putMapping.value().length > 0) return putMapping.value()[0];
-        
-        DeleteMapping deleteMapping = AnnotationUtils.findAnnotation(method, DeleteMapping.class);
-        if (deleteMapping != null && deleteMapping.value().length > 0) return deleteMapping.value()[0];
-        
-        PatchMapping patchMapping = AnnotationUtils.findAnnotation(method, PatchMapping.class);
-        if (patchMapping != null && patchMapping.value().length > 0) return patchMapping.value()[0];
-        
-        RequestMapping requestMapping = AnnotationUtils.findAnnotation(method, RequestMapping.class);
-        if (requestMapping != null && requestMapping.value().length > 0) return requestMapping.value()[0];
-        
-        return "";
-    }
-
-    /**
-     * Находит метод CustomAuthorizationManager на основе аннотации безопасности
-     */
-    private BiFunction<Mono<Authentication>, org.springframework.security.web.server.authorization.AuthorizationContext, Mono<org.springframework.security.authorization.AuthorizationDecision>> findAuthorizationMethod(Method method) {
-        if (AnnotationUtils.findAnnotation(method, RequireReadDeclaration.class) != null) {
-            return authorizationManager::checkReadDeclaration;
-        }
-        if (AnnotationUtils.findAnnotation(method, RequireWriteDeclaration.class) != null) {
-            return authorizationManager::checkWriteDeclaration;
-        }
-        if (AnnotationUtils.findAnnotation(method, RequireApproveDeclaration.class) != null) {
-            return authorizationManager::checkApproveDeclaration;
-        }
-        if (AnnotationUtils.findAnnotation(method, RequireReadWare.class) != null) {
-            return authorizationManager::checkReadWare;
-        }
-        if (AnnotationUtils.findAnnotation(method, RequireWriteWare.class) != null) {
-            return authorizationManager::checkWriteWare;
-        }
-        if (AnnotationUtils.findAnnotation(method, RequireManageInventory.class) != null) {
-            return authorizationManager::checkManageInventory;
-        }
-        return null;
+    private BiFunction<Mono<Authentication>, AuthorizationContext, Mono<AuthorizationDecision>> 
+            getAuthorizationMethod(String annotationType) {
+        return switch (annotationType) {
+            case "RequireReadDeclaration" -> authorizationManager::checkReadDeclaration;
+            case "RequireWriteDeclaration" -> authorizationManager::checkWriteDeclaration;
+            case "RequireApproveDeclaration" -> authorizationManager::checkApproveDeclaration;
+            case "RequireReadWare" -> authorizationManager::checkReadWare;
+            case "RequireWriteWare" -> authorizationManager::checkWriteWare;
+            case "RequireManageInventory" -> authorizationManager::checkManageInventory;
+            default -> null;
+        };
     }
 }

@@ -1,4 +1,4 @@
-package com.example.gateway.config;
+package com.example.gateway_lazy.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,11 +92,12 @@ public class EndpointAuthorizationRegistry {
      */
     private BiFunction<Mono<Authentication>, AuthorizationContext, Mono<org.springframework.security.authorization.AuthorizationDecision>> findByPattern(String method, String path) {
         for (Map.Entry<String, BiFunction<Mono<Authentication>, AuthorizationContext, Mono<org.springframework.security.authorization.AuthorizationDecision>>> entry : rules.entrySet()) {
-            String[] parts = entry.getKey().split(":", 2);
-            if (parts.length != 2) continue;
+            String key = entry.getKey();
+            int colonIndex = key.indexOf(':');
+            if (colonIndex <= 0 || colonIndex >= key.length() - 1) continue;
             
-            String entryMethod = parts[0];
-            String entryPath = parts[1];
+            String entryMethod = key.substring(0, colonIndex);
+            String entryPath = key.substring(colonIndex + 1);
             
             if (!entryMethod.equals(method)) continue;
             
