@@ -1,6 +1,7 @@
 package com.example.gateway.security;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -15,9 +16,10 @@ import java.util.stream.Collectors;
  * Custom Authorization Manager для проверки прав доступа.
  * Содержит методы для проверки различных типов доступа на основе authorities.
  */
-@Slf4j
 @Component
 public class CustomAuthorizationManager {
+
+    private static final Logger log = LoggerFactory.getLogger(CustomAuthorizationManager.class);
 
     /**
      * Проверка права чтения деклараций

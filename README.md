@@ -29,6 +29,8 @@ security2/
     └── src/main/java/com/example/gateway/
         ├── config/
         │   ├── ControllerScanner.java              # Сканер контроллеров
+        │   ├── ControllerFinder.java               # Утилита для диагностики поиска контроллеров
+        │   ├── ControllerDiagnosticController.java # REST API для диагностики
         │   ├── EndpointAuthorizationRegistry.java  # Реестр правил авторизации
         │   └── AutoRescanService.java              # Автоматическое пересканирование
         └── security/
@@ -57,11 +59,17 @@ security2/
 - Используйте в вашей SecurityConfig: `.access(authorizationChecker::checkAuthorization)`
 - Полный цикл проверки: путь → реестр → CustomAuthorizationManager → решение
 
-### 5. AutoRescanService (опционально)
+### 5. ControllerFinder (диагностика)
+- **Утилитный класс для поиска контроллеров в указанном модуле**
+- Можно использовать для диагностики проблем с поиском контроллеров
+- Выводит подробную информацию о найденных контроллерах
+- Использование: `ControllerFinder.findControllers("com.example.module.controller")`
+
+### 6. AutoRescanService (опционально)
 - Автоматически пересканирует контроллеры при изменениях
 - Работает в фоновом режиме с настраиваемым интервалом
 
-### 6. Кастомные аннотации (commons модуль)
+### 7. Кастомные аннотации (commons модуль)
 - `@RequireReadDeclaration` - проверка права чтения деклараций
 - `@RequireWriteDeclaration` - проверка права записи деклараций
 - `@RequireApproveDeclaration` - проверка права утверждения деклараций
@@ -214,6 +222,14 @@ if (AnnotationUtils.findAnnotation(method, RequireCustomAccess.class) != null) {
 ```bash
 mvn clean install
 ```
+
+## Документация
+
+- **[INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)** - Интеграция как библиотека (через Maven dependency)
+- **[INTEGRATION_WITHOUT_LIBRARY.md](INTEGRATION_WITHOUT_LIBRARY.md)** - Интеграция без библиотеки (копирование модулей/классов)
+- **[FILES_TO_COPY.md](FILES_TO_COPY.md)** - Список файлов для копирования
+- **[CLASSPATH_GUIDE.md](CLASSPATH_GUIDE.md)** - Как убедиться, что модули с контроллерами в classpath
+- **[CONTROLLER_FINDER_GUIDE.md](CONTROLLER_FINDER_GUIDE.md)** - Руководство по использованию ControllerFinder для диагностики
 
 ## Документация
 

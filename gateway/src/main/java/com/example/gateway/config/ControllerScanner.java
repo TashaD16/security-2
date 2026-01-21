@@ -2,16 +2,11 @@ package com.example.gateway.config;
 
 import com.example.commons.security.annotation.*;
 import com.example.gateway.security.CustomAuthorizationManager;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.AnnotationUtils;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
-import org.springframework.core.type.classreading.CachingMetadataReaderFactory;
-import org.springframework.core.type.classreading.MetadataReader;
-import org.springframework.core.type.classreading.MetadataReaderFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -25,16 +20,25 @@ import java.util.function.BiFunction;
  * Сканер контроллеров для создания маппинга эндпоинт -> метод CustomAuthorizationManager.
  * Сканирует контроллеры из модулей moduleA и moduleB и создает правила авторизации.
  */
-@Slf4j
 @Component
-@RequiredArgsConstructor
 public class ControllerScanner implements CommandLineRunner {
+
+    private static final Logger log = LoggerFactory.getLogger(ControllerScanner.class);
 
     private final CustomAuthorizationManager authorizationManager;
     private final EndpointAuthorizationRegistry endpointRegistry;
     
     @Value("${endpoint-scanner.scan-packages:com.example.moduleA.controller,com.example.moduleB.controller}")
     private String scanPackages;
+    
+    @Value("${endpoint-scanner.auto-scan-all:false}")
+    private boolean autoScanAll;
+
+    public ControllerScanner(CustomAuthorizationManager authorizationManager,
+                             EndpointAuthorizationRegistry endpointRegistry) {
+        this.authorizationManager = authorizationManager;
+        this.endpointRegistry = endpointRegistry;
+    }
 
     @Override
     public void run(String... args) throws Exception {
@@ -47,7 +51,15 @@ public class ControllerScanner implements CommandLineRunner {
      */
     public void rescan() {
         log.info("Starting controller rescan...");
-        Set<Class<?>> controllers = scanControllers();
+        Set<Class<?>> controllers;
+        
+        if (autoScanAll) {
+            log.info("Using automatic classpath scanning (scanAllControllersInClasspath)");
+            controllers = scanAllControllersInClasspath();
+        } else {
+            log.info("Using configured package scanning (scanControllers)");
+            controllers = scanControllers();
+        }
         if (!controllers.isEmpty()) {
             // Очищаем старые правила перед пересканированием
             endpointRegistry.clear();
@@ -56,57 +68,94 @@ public class ControllerScanner implements CommandLineRunner {
             // Выводим все зарегистрированные эндпоинты в консоль
             endpointRegistry.printAllEndpoints();
         } else {
-            log.warn("No controllers found. Make sure moduleA and moduleB are in classpath.");
+            log.warn("No controllers found!");
+            log.warn("Configured scan packages: {}", scanPackages);
+            log.warn("Please check:");
+            log.warn("  1. Are controllers in the specified packages?");
+            log.warn("  2. Do controllers have @RestController annotation?");
+            log.warn("  3. Are modules with controllers in classpath?");
+            log.warn("  4. Update 'endpoint-scanner.scan-packages' in application.properties with correct package names");
         }
     }
 
     /**
-     * Сканирует контроллеры из classpath
+     * Автоматически находит все контроллеры во всех модулях в classpath.
+     * Сканирует весь classpath без необходимости указывать конкретные пакеты.
+     * Использует ControllerFinder для упрощения логики
+     * 
+     * @return множество найденных контроллеров
+     */
+    public Set<Class<?>> scanAllControllersInClasspath() {
+        Set<Class<?>> controllers = new HashSet<>();
+        
+        try {
+            log.info("Scanning all controllers in classpath...");
+            
+            List<ControllerFinder.ControllerInfo> found = ControllerFinder.findAllControllers();
+            
+            for (ControllerFinder.ControllerInfo info : found) {
+                try {
+                    Class<?> clazz = Class.forName(info.className);
+                    controllers.add(clazz);
+                    log.info("✓ Registered controller: {}", info.className);
+                } catch (ClassNotFoundException | NoClassDefFoundError e) {
+                    log.warn("Could not load controller class: {}", info.className, e);
+                }
+            }
+            
+            log.info("Total controllers found: {}", controllers.size());
+            
+            if (controllers.isEmpty()) {
+                log.warn("No controllers found in classpath");
+                log.warn("Use ControllerFinder.findAllControllers() for detailed diagnostics");
+            }
+            
+        } catch (Exception e) {
+            log.error("Error scanning all controllers in classpath", e);
+        }
+        
+        return controllers;
+    }
+
+    /**
+     * Сканирует контроллеры из указанных пакетов (из конфигурации)
+     * Использует ControllerFinder для упрощения логики
      */
     public Set<Class<?>> scanControllers() {
         Set<Class<?>> controllers = new HashSet<>();
         
         try {
-            PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
-            MetadataReaderFactory metadataReaderFactory = new CachingMetadataReaderFactory(resolver);
-            
-            // Получаем пакеты для сканирования из конфигурации
             String[] packageArray = scanPackages.split(",");
-            String[] patterns = new String[packageArray.length];
-            for (int i = 0; i < packageArray.length; i++) {
-                String packagePath = packageArray[i].trim().replace('.', '/');
-                patterns[i] = "classpath*:" + packagePath + "/**/*.class";
-                log.debug("Scanning pattern: {}", patterns[i]);
+            log.info("Scanning controllers in packages: {}", scanPackages);
+            
+            for (String packageName : packageArray) {
+                packageName = packageName.trim();
+                log.info("Scanning package: {}", packageName);
+                
+                List<ControllerFinder.ControllerInfo> found = ControllerFinder.findControllers(packageName);
+                
+                for (ControllerFinder.ControllerInfo info : found) {
+                    try {
+                        Class<?> clazz = Class.forName(info.className);
+                        controllers.add(clazz);
+                        log.info("✓ Registered controller: {}", info.className);
+                    } catch (ClassNotFoundException e) {
+                        log.warn("Could not load controller class: {}", info.className, e);
+                    }
+                }
             }
             
-            for (String pattern : patterns) {
-                try {
-                    Resource[] resources = resolver.getResources(pattern);
-                    for (Resource resource : resources) {
-                        if (resource.isReadable()) {
-                            try {
-                                MetadataReader metadataReader = metadataReaderFactory.getMetadataReader(resource);
-                                String className = metadataReader.getClassMetadata().getClassName();
-                                
-                                if (metadataReader.getAnnotationMetadata().hasAnnotation(RestController.class.getName())) {
-                                    Class<?> clazz = Class.forName(className);
-                                    controllers.add(clazz);
-                                    log.debug("Found controller: {}", className);
-                                }
-                            } catch (ClassNotFoundException e) {
-                                log.trace("Could not load class from resource: {}", resource, e);
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    log.debug("Could not scan pattern: {}", pattern, e);
-                }
+            log.info("Total controllers found: {}", controllers.size());
+            
+            if (controllers.isEmpty()) {
+                log.warn("No controllers found in packages: {}", scanPackages);
+                log.warn("Use ControllerFinder.findControllers(\"{}\") for detailed diagnostics", 
+                        scanPackages.split(",")[0]);
             }
         } catch (Exception e) {
             log.error("Error scanning controllers", e);
         }
         
-        log.info("Scanned {} controllers", controllers.size());
         return controllers;
     }
 

@@ -1,6 +1,7 @@
 package com.example.gateway.config;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.server.authorization.AuthorizationContext;
 import org.springframework.stereotype.Component;
@@ -15,9 +16,10 @@ import java.util.regex.Pattern;
  * Реестр правил авторизации для эндпоинтов.
  * Хранит маппинг путь+метод -> метод CustomAuthorizationManager.
  */
-@Slf4j
 @Component
 public class EndpointAuthorizationRegistry {
+
+    private static final Logger log = LoggerFactory.getLogger(EndpointAuthorizationRegistry.class);
 
     private final Map<String, BiFunction<Mono<Authentication>, AuthorizationContext, Mono<org.springframework.security.authorization.AuthorizationDecision>>> rules = 
             new ConcurrentHashMap<>();

@@ -1,8 +1,8 @@
 package com.example.gateway.security;
 
 import com.example.gateway.config.EndpointAuthorizationRegistry;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.server.authorization.AuthorizationContext;
@@ -21,12 +21,16 @@ import java.util.function.BiFunction;
  * 2. Находит метод CustomAuthorizationManager из EndpointAuthorizationRegistry
  * 3. Вызывает соответствующий метод для проверки прав доступа
  */
-@Slf4j
 @Component
-@RequiredArgsConstructor
 public class AnnotationBasedAuthorizationChecker {
 
+    private static final Logger log = LoggerFactory.getLogger(AnnotationBasedAuthorizationChecker.class);
+
     private final EndpointAuthorizationRegistry endpointRegistry;
+
+    public AnnotationBasedAuthorizationChecker(EndpointAuthorizationRegistry endpointRegistry) {
+        this.endpointRegistry = endpointRegistry;
+    }
 
     /**
      * Проверяет авторизацию для запроса на основе аннотаций из контроллеров.

@@ -1,7 +1,7 @@
 package com.example.gateway.config;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -16,11 +16,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * Сервис для автоматического пересканирования контроллеров при изменении модулей.
  * Периодически проверяет время модификации классов контроллеров и пересканирует при изменениях.
  */
-@Slf4j
 @Service
-@RequiredArgsConstructor
 @ConditionalOnProperty(name = "gateway.auto-rescan.enabled", havingValue = "true", matchIfMissing = false)
 public class AutoRescanService {
+
+    private static final Logger log = LoggerFactory.getLogger(AutoRescanService.class);
 
     private final ControllerScanner controllerScanner;
     private final Map<String, Long> lastModifiedMap = new ConcurrentHashMap<>();
@@ -29,10 +29,14 @@ public class AutoRescanService {
     @Value("${endpoint-scanner.scan-packages:com.example.moduleA.controller,com.example.moduleB.controller}")
     private String scanPackages;
 
+    public AutoRescanService(ControllerScanner controllerScanner) {
+        this.controllerScanner = controllerScanner;
+    }
+
     /**
      * Инициализация - сохраняет текущее время модификации всех контроллеров
      */
-    @javax.annotation.PostConstruct
+    @jakarta.annotation.PostConstruct
     public void init() {
         try {
             scanAndStoreModificationTimes();

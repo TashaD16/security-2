@@ -1,6 +1,7 @@
 package com.example.commons.security.service;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -14,9 +15,10 @@ import java.util.Optional;
  * Сервис для управления пользователями и их правами доступа.
  * Общий для всех модулей.
  */
-@Slf4j
 @Service
 public class UserService {
+
+    private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
     // В реальном приложении это должно быть в базе данных
     private final Map<String, User> users = new ConcurrentHashMap<>();
